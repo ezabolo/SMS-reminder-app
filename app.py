@@ -29,6 +29,10 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key')
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 
+# Admin credentials
+ADMIN_USERNAME = 'admin'
+ADMIN_PASSWORD = 'Kdf$325Mfs&7r&d!'
+
 # Models
 class Admin(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -57,7 +61,7 @@ class Reminder(db.Model):
     status = db.Column(db.String(20), default='pending')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-# Authentication middleware
+# Admin authentication decorator
 def admin_required(f):
     def wrapper(*args, **kwargs):
         if 'admin_id' not in session:
@@ -77,17 +81,25 @@ def index():
 def login():
     try:
         data = request.json
-        admin = Admin.query.filter_by(username=data['username']).first()
-        
-        if admin and admin.check_password(data['password']):
+        username = data.get('username')
+        password = data.get('password')
+
+        if not username or not password:
+            return jsonify({'error': 'Username and password are required'}), 400
+
+        if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+            admin = Admin.query.filter_by(username=username).first()
+            if not admin:
+                admin = Admin(username=username)
+                admin.set_password(password)
+                db.session.add(admin)
+                db.session.commit()
             session['admin_id'] = admin.id
-            return jsonify({
-                'status': 'success',
-                'message': 'Logged in successfully'
-            })
+            return jsonify({'status': 'success'})
+
         return jsonify({'error': 'Invalid credentials'}), 401
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/auth/logout', methods=['POST'])
 def logout():
@@ -312,9 +324,9 @@ scheduler.start()
 # Create admin account if it doesn't exist
 def create_admin():
     with app.app_context():
-        if not Admin.query.filter_by(username='admin').first():
-            admin = Admin(username='admin')
-            admin.set_password('admin123')  # Default password
+        if not Admin.query.filter_by(username=ADMIN_USERNAME).first():
+            admin = Admin(username=ADMIN_USERNAME)
+            admin.set_password(ADMIN_PASSWORD)  
             db.session.add(admin)
             db.session.commit()
 
