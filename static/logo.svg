@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="100" viewBox="0 0 400 100">
+    <!-- Face outline -->
+    <path d="M 30,20 C 25,30 20,50 25,70 C 35,85 65,85 75,70 C 80,50 75,30 70,20" 
+          fill="none" stroke="black" stroke-width="2"/>
+    
+    <!-- Text -->
+    <text x="100" y="40" font-family="Script" font-size="24" fill="#8cc63f">
+        Artistic Family Dentistry
+    </text>
+    <text x="100" y="65" font-family="Arial" font-size="18" fill="#808080">
+        of Silver Spring
+    </text>
+    <text x="100" y="85" font-family="Arial" font-size="14" fill="#808080">
+        The Art and Science of Dental Health
+    </text>
+</svg>

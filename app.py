@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file, redirect, url_for, session
+from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_cors import CORS
@@ -13,7 +13,7 @@ from dateutil import tz
 load_dotenv()
 
 # Initialize Flask app
-app = Flask(__name__)
+app = Flask(__name__, static_url_path='/static', static_folder='static')
 CORS(app)
 
 # Configure SQLAlchemy
@@ -233,7 +233,31 @@ def create_reminder():
 @admin_required
 def get_reminders():
     try:
-        reminders = Reminder.query.join(Patient).order_by(Reminder.scheduled_time.desc()).all()
+        # Get date filter from query parameters
+        filter_date = request.args.get('date')
+        
+        # Base query joining with Patient
+        query = Reminder.query.join(Patient)
+        
+        # Apply date filter if provided
+        if filter_date:
+            try:
+                # Parse the date string
+                filter_date = datetime.strptime(filter_date, '%Y-%m-%d')
+                # Get start and end of the day in UTC
+                start_of_day = filter_date.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_of_day = filter_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+                # Filter reminders for the specified date
+                query = query.filter(
+                    Reminder.scheduled_time >= start_of_day,
+                    Reminder.scheduled_time <= end_of_day
+                )
+            except ValueError:
+                return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+        
+        # Order by scheduled time
+        reminders = query.order_by(Reminder.scheduled_time.asc()).all()
+        
         return jsonify({
             'status': 'success',
             'count': len(reminders),
