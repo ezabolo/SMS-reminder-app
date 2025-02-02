@@ -3,14 +3,18 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_cors import CORS
 from datetime import datetime
+from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 import os
-from dotenv import load_dotenv
+from utils.sms_handler import SMSHandler
 from werkzeug.security import generate_password_hash, check_password_hash
 from dateutil import tz
 
 # Load environment variables
 load_dotenv()
+
+# Initialize SMS Handler
+sms_handler = SMSHandler()
 
 # Initialize Flask app
 app = Flask(__name__, static_url_path='/static', static_folder='static')
@@ -162,71 +166,51 @@ def delete_patient(patient_id):
 def create_reminder():
     try:
         data = request.json
-        if not all(key in data for key in ['patient_id', 'message', 'scheduled_time']):
-            return jsonify({
-                'error': 'Missing required fields',
-                'required_fields': ['patient_id', 'message', 'scheduled_time']
-            }), 400
+        patient_id = data.get('patient_id')
+        message = data.get('message')
+        scheduled_time = data.get('scheduled_time')
 
-        # Validate patient exists
-        patient = Patient.query.get(data['patient_id'])
+        if not all([patient_id, message, scheduled_time]):
+            return jsonify({'error': 'Missing required fields'}), 400
+
+        # Get patient details
+        patient = Patient.query.get(patient_id)
         if not patient:
-            return jsonify({
-                'error': 'Patient not found'
-            }), 404
+            return jsonify({'error': 'Patient not found'}), 404
 
-        # Validate scheduled time
-        try:
-            # Handle various datetime formats
-            scheduled_time_str = data['scheduled_time']
-            # Remove any trailing 'Z' and replace with +00:00 for UTC
-            if scheduled_time_str.endswith('Z'):
-                scheduled_time_str = scheduled_time_str[:-1] + '+00:00'
-            # If no timezone info, assume UTC
-            elif not any(x in scheduled_time_str for x in ['+', '-', 'Z']):
-                scheduled_time_str += '+00:00'
-            
-            scheduled_time = datetime.fromisoformat(scheduled_time_str)
-            
-            # Convert to UTC if it's not
-            if scheduled_time.tzinfo is not None:
-                scheduled_time = scheduled_time.astimezone(tz.tzutc())
-            
-            # Remove timezone info for database storage
-            scheduled_time = scheduled_time.replace(tzinfo=None)
-            
-            if scheduled_time < datetime.utcnow():
-                return jsonify({
-                    'error': 'Scheduled time must be in the future'
-                }), 400
-                
-        except Exception as e:
-            return jsonify({
-                'error': f'Invalid datetime format. Please use format: YYYY-MM-DDTHH:MM:SS (e.g., 2025-02-02T15:30:00)'
-            }), 400
-
+        # Create reminder
         reminder = Reminder(
-            patient_id=data['patient_id'],
-            message=data['message'],
-            scheduled_time=scheduled_time
+            patient_id=patient_id,
+            message=message,
+            scheduled_time=datetime.fromisoformat(scheduled_time.replace('Z', '+00:00'))
         )
         db.session.add(reminder)
         db.session.commit()
 
+        # Send SMS notification
+        formatted_message = sms_handler.format_appointment_message(
+            patient.name,
+            scheduled_time,
+            message
+        )
+        sms_result = sms_handler.send_sms(patient.phone_number, formatted_message)
+
+        if not sms_result['success']:
+            # Log the error but don't prevent reminder creation
+            print(f"SMS sending failed: {sms_result['error']}")
+
         return jsonify({
             'status': 'success',
-            'message': 'Reminder created successfully',
             'reminder': {
                 'id': reminder.id,
                 'patient_id': reminder.patient_id,
                 'message': reminder.message,
                 'scheduled_time': reminder.scheduled_time.isoformat(),
                 'status': reminder.status,
-                'created_at': reminder.created_at.isoformat()
+                'sms_status': 'sent' if sms_result.get('success', False) else 'failed'
             }
-        }), 201
+        })
     except Exception as e:
-        db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/reminders', methods=['GET'])
@@ -290,6 +274,35 @@ def delete_reminder(reminder_id):
         })
     except Exception as e:
         db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+# Test SMS endpoint
+@app.route('/api/test-sms', methods=['POST'])
+@admin_required
+def test_sms():
+    try:
+        data = request.json
+        phone_number = data.get('phone_number')
+        
+        if not phone_number:
+            return jsonify({'error': 'Phone number is required'}), 400
+
+        test_message = "This is a test message from Artistic Family Dentistry's Appointment Reminder System."
+        result = sms_handler.send_sms(phone_number, test_message)
+
+        if result['success']:
+            return jsonify({
+                'status': 'success',
+                'message': 'Test SMS sent successfully',
+                'message_id': result['message_id']
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': f"Failed to send SMS: {result['error']}"
+            }), 500
+
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 # Initialize scheduler

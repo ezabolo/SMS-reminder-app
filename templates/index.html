@@ -48,6 +48,11 @@
                     Patients
                 </button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings" type="button" role="tab">
+                    Settings
+                </button>
+            </li>
         </ul>
 
         <!-- Tab Content -->
@@ -145,6 +150,29 @@
                                 <div id="patientsList">
                                     <!-- Patients will be listed here -->
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Tab -->
+            <div class="tab-pane fade" id="settings" role="tabpanel">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h4>Test SMS Functionality</h4>
+                            </div>
+                            <div class="card-body">
+                                <form id="testSmsForm">
+                                    <div class="mb-3">
+                                        <label for="testPhone" class="form-label">Phone Number</label>
+                                        <input type="text" class="form-control" id="testPhone" required placeholder="+1234567890">
+                                    </div>
+                                    <button type="submit" class="btn btn-primary">Send Test SMS</button>
+                                </form>
+                                <div id="smsTestResult" class="mt-3"></div>
                             </div>
                         </div>
                     </div>
@@ -420,6 +448,46 @@
                 .catch(error => console.error('Error deleting reminder:', error));
             }
         }
+
+        // Test SMS functionality
+        document.getElementById('testSmsForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const phone_number = document.getElementById('testPhone').value;
+            const resultDiv = document.getElementById('smsTestResult');
+            
+            fetch('/api/test-sms', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ phone_number })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    resultDiv.innerHTML = `
+                        <div class="alert alert-success">
+                            ${data.message}<br>
+                            Message ID: ${data.message_id}
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="alert alert-danger">
+                            ${data.message || data.error}
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                resultDiv.innerHTML = `
+                    <div class="alert alert-danger">
+                        Error testing SMS: ${error}
+                    </div>
+                `;
+            });
+        });
 
         // Initialize page
         loadPatients();
