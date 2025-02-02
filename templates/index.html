@@ -252,10 +252,14 @@
         document.getElementById('reminderForm').addEventListener('submit', function(e) {
             e.preventDefault();
             
+            // Get the datetime value and convert it to ISO format
+            const datetimeInput = document.getElementById('datetime').value;
+            const scheduledTime = new Date(datetimeInput);
+            
             const data = {
                 patient_id: document.getElementById('patientSelect').value,
                 message: document.getElementById('message').value,
-                scheduled_time: new Date(document.getElementById('datetime').value).toISOString()
+                scheduled_time: scheduledTime.toISOString()
             };
 
             fetch('/api/reminders', {
@@ -268,9 +272,12 @@
             .then(response => response.json())
             .then(data => {
                 if (data.error) {
-                    alert(data.message);
+                    alert(data.error);
                 } else {
                     document.getElementById('reminderForm').reset();
+                    // Set current time as default
+                    const now = new Date();
+                    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
                     document.getElementById('datetime').value = now.toISOString().slice(0, 16);
                     loadReminders();
                 }

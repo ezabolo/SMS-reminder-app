@@ -7,6 +7,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import os
 from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
+from dateutil import tz
 
 # Load environment variables
 load_dotenv()
@@ -167,18 +168,41 @@ def create_reminder():
                 'required_fields': ['patient_id', 'message', 'scheduled_time']
             }), 400
 
+        # Validate patient exists
+        patient = Patient.query.get(data['patient_id'])
+        if not patient:
+            return jsonify({
+                'error': 'Patient not found'
+            }), 404
+
         # Validate scheduled time
         try:
-            scheduled_time = datetime.fromisoformat(data['scheduled_time'])
+            # Handle various datetime formats
+            scheduled_time_str = data['scheduled_time']
+            # Remove any trailing 'Z' and replace with +00:00 for UTC
+            if scheduled_time_str.endswith('Z'):
+                scheduled_time_str = scheduled_time_str[:-1] + '+00:00'
+            # If no timezone info, assume UTC
+            elif not any(x in scheduled_time_str for x in ['+', '-', 'Z']):
+                scheduled_time_str += '+00:00'
+            
+            scheduled_time = datetime.fromisoformat(scheduled_time_str)
+            
+            # Convert to UTC if it's not
+            if scheduled_time.tzinfo is not None:
+                scheduled_time = scheduled_time.astimezone(tz.tzutc())
+            
+            # Remove timezone info for database storage
+            scheduled_time = scheduled_time.replace(tzinfo=None)
+            
             if scheduled_time < datetime.utcnow():
                 return jsonify({
-                    'error': 'Invalid scheduled time',
-                    'message': 'Scheduled time must be in the future'
+                    'error': 'Scheduled time must be in the future'
                 }), 400
-        except ValueError:
+                
+        except Exception as e:
             return jsonify({
-                'error': 'Invalid datetime format',
-                'message': 'Use ISO format (YYYY-MM-DDTHH:MM:SS)'
+                'error': f'Invalid datetime format. Please use format: YYYY-MM-DDTHH:MM:SS (e.g., 2025-02-02T15:30:00)'
             }), 400
 
         reminder = Reminder(
